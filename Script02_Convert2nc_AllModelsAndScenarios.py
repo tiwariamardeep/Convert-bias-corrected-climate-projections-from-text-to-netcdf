@@ -1,0 +1,112 @@
+# This code converts text files of bias-corrected CMIP6 climate projections from Mishra et al. (2020) to netcdf files
+# Written by Amar Deep Tiwari (tiwaria6@msu.edu)
+# July 18, 2025
+
+import os
+import pandas as pd
+import numpy as np
+import xarray as xr
+
+def convert_txt_to_gridded_netcdf(filename, output_nc, var_name, units):
+    # Read file lines
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+
+    # Extract longitudes and latitudes from first two lines (skip first 3 columns)
+    lons = np.array(lines[0].strip().split()[3:], dtype=float)
+    lats = np.array(lines[1].strip().split()[3:], dtype=float)
+
+    # Identify unique sorted coordinates for grid
+    unique_lons = np.sort(np.unique(lons))
+    unique_lats = np.sort(np.unique(lats))[::-1]  # reverse lat for (north -> south)
+
+    # Create index maps for (lon, lat)
+    lon_idx = {lon: i for i, lon in enumerate(unique_lons)}
+    lat_idx = {lat: i for i, lat in enumerate(unique_lats)}
+
+    # Read time-series data
+    df = pd.read_csv(filename, sep=r'\s+', skiprows=2, header=None)
+
+    # Extract and convert time to "days since 1951-01-01"
+    time_raw = pd.to_datetime(df[[0, 1, 2]].rename(columns={0: 'year', 1: 'month', 2: 'day'}))
+    ref_time = pd.Timestamp("1951-01-01")
+    time_days = (time_raw - ref_time) / pd.Timedelta(days=1)
+
+    # Initialize empty array [time, lat, lon]
+    nt, ny, nx = df.shape[0], len(unique_lats), len(unique_lons)
+    data_array = np.full((nt, ny, nx), np.nan, dtype=np.float32)
+
+    # Fill in values
+    values = df.iloc[:, 3:].values
+    for i, (lon, lat) in enumerate(zip(lons, lats)):
+        x = lon_idx[lon]
+        y = lat_idx[lat]
+        data_array[:, y, x] = values[:, i]
+
+    # Set temperature threshold for TMax and TMin
+    if var_name in ["tmax", "tmin"]:
+        data_array[data_array < -50] = np.nan
+
+    # Build xarray Dataset with CF-compliant time
+    ds = xr.Dataset(
+        {
+            var_name: (["time", "lat", "lon"], data_array)
+        },
+        coords={
+            "time": ("time", time_days, {
+                "units": "days since 1951-01-01",
+                "calendar": "standard"
+            }),
+            "lon": unique_lons,
+            "lat": unique_lats
+        },
+        attrs={
+            "description": f"{var_name} from {filename}"
+        }
+    )
+
+    # Set variable units
+    ds[var_name].attrs["units"] = units
+
+    # Save to NetCDF
+    ds.to_netcdf(output_nc)
+    print(f"Saved gridded NetCDF: {output_nc}")
+
+# Define models and scenarios
+models = [
+    "ACCESS-CM2", "ACCESS-ESM1-5", "BCC-CSM2-MR", "CanESM5",
+    "EC-Earth3", "EC-Earth3-Veg", "INM-CM4-8", "INM-CM5-0",
+    "MPI-ESM1-2-HR", "MPI-ESM1-2-LR", "MRI-ESM2-0", "NorESM2-LM", "NorESM2-MM"
+]
+
+scenarios = ["historical", "ssp126", "ssp245", "ssp370", "ssp585"]
+variables = {
+    "PrecipData": ("precip", "mm/day"),
+    "TMaxData": ("tmax", "degC"),
+    "TMinData": ("tmin", "degC")
+}
+
+# Convert to netcdf
+base_dir = "Mahi"
+out_dir = "Mahi_netCDF"
+
+# Loop through model → scenario → variable
+for model in models:
+    for scenario in scenarios:
+        input_dir = os.path.join(base_dir, model, scenario)
+        for filename, (var_name, units) in variables.items():
+            txt_file = os.path.join(input_dir, filename)
+
+            # Define output path under Mahi_netCDF
+            output_dir = os.path.join(out_dir, model, scenario)
+            os.makedirs(output_dir, exist_ok=True)
+            nc_file = os.path.join(output_dir, f"{var_name}.nc")
+
+            if os.path.exists(txt_file):
+                try:
+                    convert_txt_to_gridded_netcdf(txt_file, nc_file, var_name, units)
+                except Exception as e:
+                    print(f"Failed: {txt_file}\n   Reason: {e}")
+            else:
+                print(f"Missing: {txt_file}")
+
