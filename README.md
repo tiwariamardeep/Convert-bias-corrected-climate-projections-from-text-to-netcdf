@@ -1,1 +1,1 @@
-# Convert-bias-corrected-climate-projections-from-text-to-netcdf
+# The python code will convert text files of bias corrected CMIP6 climate projections to netCDF virsion.
