@@ -1,4 +1,4 @@
-# This code converts text files of bias-corrected CMIP6 climate projections from Mishra et al. (2020) to netcdf files
+# This code converts all text files of bias-corrected CMIP6 climate projections for a basin or country from Mishra, Tiwari et al. (2020) to netCDF files
 # Written by Amar Deep Tiwari (tiwaria6@msu.edu)
 # July 18, 2025
 
