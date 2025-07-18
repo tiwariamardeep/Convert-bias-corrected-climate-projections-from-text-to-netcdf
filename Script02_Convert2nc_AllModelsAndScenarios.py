@@ -97,7 +97,7 @@ for model in models:
         for filename, (var_name, units) in variables.items():
             txt_file = os.path.join(input_dir, filename)
 
-            # Define output path under Mahi_netCDF
+            # Define output path
             output_dir = os.path.join(out_dir, model, scenario)
             os.makedirs(output_dir, exist_ok=True)
             nc_file = os.path.join(output_dir, f"{var_name}.nc")
